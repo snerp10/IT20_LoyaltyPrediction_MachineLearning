@@ -90,14 +90,16 @@ html, body, [class*="css"] {
 /* ── Header bar ── */
 .site-header {
     background: linear-gradient(135deg, #1B2A4A 0%, #0D1B2A 60%, #1B3A5C 100%);
-    padding: 0.9rem 1.2rem;   /* increased vertical padding */
-    border-radius: 10px;
-    margin: 0 0 1rem 0;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    margin: 0 0 0.8rem 0;
     display: flex;
     align-items: center;
-    gap: 0.8rem;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.06);
+    gap: 0.6rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.07);
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .site-header img {
@@ -200,12 +202,12 @@ html, body, [class*="css"] {
 /* ── Sidebar ── */
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0D1B2A 0%, #1B2A4A 100%);
-    width: 220px !important;
-    min-width: 220px !important;
+    width: 175px !important;
+    min-width: 175px !important;
+    max-width: 175px !important;
 }
 section[data-testid="stSidebar"] > div:first-child {
-    padding-top: 0.3rem;
-    padding-bottom: 0.3rem;
+    padding: 0.2rem 0.35rem;
     overflow-y: hidden !important;
 }
 
@@ -228,8 +230,11 @@ section[data-testid="stSidebar"] .stButton > button {
     color: #9ca3af;
     border: none;
     border-radius: 6px;
-    padding: 0.28rem 0.5rem;
-    font-size: 0.75rem;
+    padding: 0.2rem 0.35rem;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: 500;
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
