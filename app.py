@@ -90,42 +90,40 @@ html, body, [class*="css"] {
 /* ── Header bar ── */
 .site-header {
     background: linear-gradient(135deg, #1B2A4A 0%, #0D1B2A 60%, #1B3A5C 100%);
-    padding: 0.55rem 1rem;
+    padding: 0.9rem 1.2rem;   /* increased vertical padding */
     border-radius: 10px;
     margin: 0 0 1rem 0;
     display: flex;
     align-items: center;
-    gap: 0.7rem;
+    gap: 0.8rem;
     box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     border: 1px solid rgba(255,255,255,0.06);
-    min-width: 0;
-    overflow: hidden;
 }
+
 .site-header img {
-    height: 32px;
-    width: 32px;
+    height: 36px;
+    width: 36px;
     border-radius: 6px;
     flex-shrink: 0;
     object-fit: contain;
 }
+
 .site-header h1 {
     color: #FFFFFF;
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     font-weight: 700;
     margin: 0;
+    line-height: 1.4;   /* prevents top clipping */
     letter-spacing: -0.2px;
-    line-height: 1.2;
-    white-space: nowrap;
 }
+
 .site-header .subtitle {
     color: #90CAF9;
-    font-size: 0.65rem;
+    font-size: 0.72rem;
     font-weight: 400;
     margin: 0;
     opacity: 0.85;
-    white-space: nowrap;
 }
-
 /* ── Metric cards ── */
 .metric-card {
     background: linear-gradient(135deg, #1a1f2e 0%, #161b22 100%);
