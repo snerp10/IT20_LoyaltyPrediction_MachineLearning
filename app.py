@@ -35,7 +35,7 @@ from imblearn.over_sampling import SMOTE
 # Configuration
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(__file__)
-MODEL_PATH = os.path.join(BASE_DIR, "customer_loyalty_model_bundle_v2.pkl")
+MODEL_PATH = os.path.join(BASE_DIR, "customer_loyalty_model_bundle_v3.pkl")
 DATA_PATH = os.path.join(BASE_DIR, "ecommerce_customer_features.csv")
 DB_PATH = os.path.join(BASE_DIR, "prediction_history.db")
 LOGO_PATH = os.path.join(BASE_DIR, "loyalty_logo.png")
@@ -83,48 +83,52 @@ html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 .block-container {
-    padding-top: 0.8rem;
+    padding-top: 2rem;
     padding-bottom: 2rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
 }
 
 /* ── Header bar ── */
 .site-header {
     background: linear-gradient(135deg, #1B2A4A 0%, #0D1B2A 60%, #1B3A5C 100%);
-    padding: 0.5rem 1rem;
-    border-radius: 8px;
-    margin: 0 0 0.8rem 0;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    margin: 0 0 1.5rem 0;
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.07);
+    gap: 0.8rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.08);
     box-sizing: border-box;
     width: 100%;
+    min-height: 70px;
 }
 
 .site-header img {
-    height: 36px;
-    width: 36px;
-    border-radius: 6px;
+    height: 42px;
+    width: 42px;
+    border-radius: 8px;
     flex-shrink: 0;
     object-fit: contain;
 }
 
 .site-header h1 {
     color: #FFFFFF;
-    font-size: 1.05rem;
+    font-size: 1.3rem;
     font-weight: 700;
     margin: 0;
-    line-height: 1.4;   /* prevents top clipping */
+    line-height: 1.3;
     letter-spacing: -0.2px;
 }
 
 .site-header .subtitle {
     color: #90CAF9;
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     font-weight: 400;
     margin: 0;
-    opacity: 0.85;
+    opacity: 0.9;
+    line-height: 1.3;
 }
 /* ── Metric cards ── */
 .metric-card {
@@ -371,27 +375,25 @@ def get_logo_base64():
 
 @st.cache_resource
 def load_model(path: str = MODEL_PATH):
-    """Load the model bundle (.pkl) and return its components."""
+    """Load the model bundle (.pkl) and return its components.
+
+    v3 bundle: both models are full sklearn Pipelines (preprocessor + classifier).
+    The top-level 'preprocessor' key is kept for SMOTE visualisation only.
+    Random Forest is the chosen final model for this study.
+    """
     if not os.path.exists(path):
         st.error(f"Model file not found at: {path}")
         st.stop()
     bundle = joblib.load(path)
-    from sklearn.utils.validation import check_is_fitted
 
     normalised = {
-        "rf_model": bundle.get("random_forest_model", bundle.get("model")),
-        "lr_model": None,
+        # Both models are full pipelines — preprocessing is embedded
+        "rf_model": bundle.get("random_forest_model"),
+        "lr_model": bundle.get("logistic_regression_model"),
+        # Standalone preprocessor kept for SMOTE stats display only
         "preprocessor": bundle["preprocessor"],
         "feature_names": bundle.get("feature_columns", bundle.get("feature_names")),
     }
-
-    lr_candidate = bundle.get("logistic_regression_model")
-    if lr_candidate is not None:
-        try:
-            check_is_fitted(lr_candidate)
-            normalised["lr_model"] = lr_candidate
-        except Exception:
-            pass
 
     return normalised
 
@@ -428,6 +430,7 @@ def compute_model_metrics(_bundle, _df):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
+    # Use standalone preprocessor for SMOTE visualisation stats only
     preprocessor = _bundle["preprocessor"]
     X_train_processed = preprocessor.transform(X_train)
     X_test_processed = preprocessor.transform(X_test)
@@ -453,8 +456,9 @@ def compute_model_metrics(_bundle, _df):
         models_to_eval["Random Forest"] = _bundle["rf_model"]
 
     for name, mdl in models_to_eval.items():
-        y_pred = mdl.predict(X_test_processed)
-        y_prob = mdl.predict_proba(X_test_processed)[:, 1]
+        # Each model is a full pipeline — pass raw X_test directly
+        y_pred = mdl.predict(X_test)
+        y_prob = mdl.predict_proba(X_test)[:, 1]
         fpr, tpr, _ = roc_curve(y_test, y_prob)
         prec_curve, rec_curve, _ = precision_recall_curve(y_test, y_prob)
         cm = confusion_matrix(y_test, y_pred)
@@ -477,29 +481,19 @@ def compute_model_metrics(_bundle, _df):
     return results
 
 
-def preprocess_data(df: pd.DataFrame, preprocessor, feature_names: list) -> np.ndarray:
-    df = df.copy()
+def predict_loyalty(model, feature_names: list, df: pd.DataFrame):
+    """Run prediction using a full sklearn Pipeline (preprocessing embedded)."""
+    df_input = df.copy()
     for col in ["Customer_ID", "loyalty_member"]:
-        if col in df.columns:
-            df.drop(columns=[col], inplace=True)
-    missing = [c for c in feature_names if c not in df.columns]
+        if col in df_input.columns:
+            df_input.drop(columns=[col], inplace=True)
+    missing = [c for c in feature_names if c not in df_input.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
-    df = df[feature_names]
-    for col in df.columns:
-        if hasattr(df[col].dtype, 'name') and df[col].dtype.name in ('string', 'String'):
-            df[col] = df[col].astype(object)
-    return preprocessor.transform(df)
-
-
-def predict_loyalty(model, preprocessor, feature_names: list, df: pd.DataFrame):
-    processed = preprocess_data(df, preprocessor, feature_names)
-    predictions = model.predict(processed)
-    probabilities = model.predict_proba(processed)
-    results = df.copy()
-    for col in ["Customer_ID", "loyalty_member"]:
-        if col in results.columns:
-            results.drop(columns=[col], inplace=True)
+    df_input = df_input[feature_names]
+    predictions = model.predict(df_input)
+    probabilities = model.predict_proba(df_input)
+    results = df_input.copy()
     results["Prediction"] = np.where(predictions == 1, "LOYAL CUSTOMER", "NOT LOYAL CUSTOMER")
     results["Loyalty Probability (%)"] = np.round(probabilities[:, 1] * 100, 2)
     results["Not-Loyal Probability (%)"] = np.round(probabilities[:, 0] * 100, 2)
@@ -961,9 +955,9 @@ def page_feature_importance(bundle, metrics):
     lr_model = bundle.get("lr_model")
     feature_names = bundle["feature_names"]
 
-    if rf_model is not None and hasattr(rf_model, "feature_importances_"):
-        st.markdown("#### Random Forest — Gini Importance")
-        importances = rf_model.feature_importances_
+    if rf_model is not None and hasattr(rf_model, "named_steps") and hasattr(rf_model.named_steps.get("classifier"), "feature_importances_"):
+        st.markdown("#### Random Forest — Gini Importance (Final Chosen Model)")
+        importances = rf_model.named_steps["classifier"].feature_importances_
         imp_df = pd.DataFrame({"Feature": feature_names, "Importance": importances}).sort_values("Importance", ascending=True)
         fig_imp = px.bar(
             imp_df, x="Importance", y="Feature", orientation="h",
@@ -975,9 +969,9 @@ def page_feature_importance(bundle, metrics):
         )
         st.plotly_chart(fig_imp, use_container_width=True, key="rf_importance")
 
-    if lr_model is not None and hasattr(lr_model, "coef_"):
+    if lr_model is not None and hasattr(lr_model, "named_steps") and hasattr(lr_model.named_steps.get("classifier"), "coef_"):
         st.markdown("#### Logistic Regression — Coefficients")
-        coefs = lr_model.coef_[0]
+        coefs = lr_model.named_steps["classifier"].coef_[0]
         coef_df = pd.DataFrame({"Feature": feature_names, "Coefficient": coefs}).sort_values("Coefficient", ascending=True)
         fig_coef = px.bar(
             coef_df, x="Coefficient", y="Feature", orientation="h",
@@ -1001,14 +995,16 @@ def page_single_prediction(bundle):
     st.markdown('<div class="section-header">Single Customer Prediction</div>', unsafe_allow_html=True)
     st.caption("Enter the customer's details below and click **Predict** to determine loyalty membership status.")
 
+    # Random Forest is listed first — it is the final chosen model for this study
     model_options = {}
-    if bundle.get("lr_model") is not None:
-        model_options["Logistic Regression"] = bundle["lr_model"]
     if bundle.get("rf_model") is not None:
         model_options["Random Forest"] = bundle["rf_model"]
+    if bundle.get("lr_model") is not None:
+        model_options["Logistic Regression"] = bundle["lr_model"]
     chosen_model_name = st.selectbox("Model", list(model_options.keys()), key="single_model")
+    if chosen_model_name == "Random Forest":
+        st.info("Random Forest is the **final chosen model** for this study — it provided more balanced and generalisable predictions across all customer segments.", icon="✅")
     model = model_options[chosen_model_name]
-    preprocessor = bundle["preprocessor"]
     feature_names = bundle["feature_names"]
 
     st.markdown("---")
@@ -1057,7 +1053,7 @@ def page_single_prediction(bundle):
         }])
 
         try:
-            result = predict_loyalty(model, preprocessor, feature_names, input_data)
+            result = predict_loyalty(model, feature_names, input_data)
             prediction = result["Prediction"].iloc[0]
             prob_loyal = result["Loyalty Probability (%)"].iloc[0]
             prob_not_loyal = result["Not-Loyal Probability (%)"].iloc[0]
@@ -1130,14 +1126,16 @@ def page_batch_prediction(bundle):
     st.markdown('<div class="section-header">Batch CSV Prediction</div>', unsafe_allow_html=True)
     st.caption("Upload a CSV file containing customer data to generate loyalty predictions in bulk.")
 
+    # Random Forest is listed first — it is the final chosen model for this study
     model_options = {}
-    if bundle.get("lr_model") is not None:
-        model_options["Logistic Regression"] = bundle["lr_model"]
     if bundle.get("rf_model") is not None:
         model_options["Random Forest"] = bundle["rf_model"]
+    if bundle.get("lr_model") is not None:
+        model_options["Logistic Regression"] = bundle["lr_model"]
     chosen_model_name = st.selectbox("Model", list(model_options.keys()), key="batch_model")
+    if chosen_model_name == "Random Forest":
+        st.info("Random Forest is the **final chosen model** for this study — it provided more balanced and generalisable predictions across all customer segments.", icon="✅")
     model = model_options[chosen_model_name]
-    preprocessor = bundle["preprocessor"]
     feature_names = bundle["feature_names"]
 
     with st.expander("Required CSV columns"):
@@ -1165,7 +1163,7 @@ def page_batch_prediction(bundle):
         if st.button("Run Batch Prediction", use_container_width=True, type="primary"):
             try:
                 with st.spinner("Running predictions..."):
-                    results = predict_loyalty(model, preprocessor, feature_names, df)
+                    results = predict_loyalty(model, feature_names, df)
 
                 st.markdown('<div class="section-header">Prediction Results</div>', unsafe_allow_html=True)
                 st.dataframe(results, use_container_width=True, height=400)
@@ -1249,9 +1247,10 @@ def page_about():
         | **Data** | 15 features from e-commerce transaction logs |
         | **Preprocessing** | Median imputation, StandardScaler normalization |
         | **Class Balancing** | SMOTE oversampling on training split |
-        | **Models** | Logistic Regression, Random Forest Classifier |
+        | **Models** | Logistic Regression, **Random Forest Classifier (Final)** |
         | **Tuning** | GridSearchCV with cross-validation |
         | **Evaluation** | Accuracy, Precision, Recall, F1, ROC AUC |
+        | **Final Model** | **Random Forest** — chosen for its balanced, unbiased predictions across all customer segments and better alignment with study objectives |
 
         ---
 
